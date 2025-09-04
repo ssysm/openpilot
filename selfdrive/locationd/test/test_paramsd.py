@@ -1,6 +1,5 @@
 import random
 import numpy as np
-import json
 
 from cereal import messaging
 from openpilot.selfdrive.locationd.paramsd import retrieve_initial_vehicle_params, migrate_cached_vehicle_params_if_needed
@@ -28,7 +27,7 @@ class TestParamsd:
     CP = next(m for m in lr if m.which() == "carParams").carParams
 
     msg = get_random_live_parameters(CP)
-    params.put("LiveParameters", msg.to_bytes())
+    params.put("LiveParametersV2", msg.to_bytes())
     params.put("CarParamsPrevRoute", CP.as_builder().to_bytes())
 
     migrate_cached_vehicle_params_if_needed(params) # this is not tested here but should not mess anything up or throw an error
@@ -47,11 +46,22 @@ class TestParamsd:
     CP = next(m for m in lr if m.which() == "carParams").carParams
 
     msg = get_random_live_parameters(CP)
-    params.put("LiveParameters", json.dumps(msg.liveParameters.to_dict()))
+    params.put("LiveParameters", msg.liveParameters.to_dict())
     params.put("CarParamsPrevRoute", CP.as_builder().to_bytes())
+    params.remove("LiveParametersV2")
 
     migrate_cached_vehicle_params_if_needed(params)
     sr, sf, offset, _ = retrieve_initial_vehicle_params(params, CP, replay=True, debug=True)
     np.testing.assert_allclose(sr, msg.liveParameters.steerRatio)
     np.testing.assert_allclose(sf, msg.liveParameters.stiffnessFactor)
     np.testing.assert_allclose(offset, msg.liveParameters.angleOffsetAverageDeg)
+    assert params.get("LiveParametersV2") is not None
+
+  def test_read_saved_params_corrupted_old_format(self):
+    params = Params()
+    params.put("LiveParameters", {})
+    params.remove("LiveParametersV2")
+
+    migrate_cached_vehicle_params_if_needed(params)
+    assert params.get("LiveParameters") is None
+    assert params.get("LiveParametersV2") is None
